@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
+
 try:
     from streamlit.runtime.scriptrunner import get_script_run_ctx
 except ImportError:
@@ -25,7 +26,7 @@ def _is_streamlit_runtime():
 
 
 class LinearCongruentialGenerator:
-    def __init__(self, modulus, multiplier, increment, seed):  # fixed constructor
+    def __init__(self, modulus, multiplier, increment, seed):
         if modulus <= 0:
             raise ValueError("Modulus must be positive")
         self.modulus = modulus
@@ -48,22 +49,19 @@ def main():
     if not _is_streamlit_runtime():
         print("Run this app with 'streamlit run project.py'")
         return
-
     st.set_page_config(page_title="Random Number Generator Studio", layout="wide")
-
-    # ✅ FIXED: safer and more visible styling
     st.markdown(
         """
         <style>
         .stApp {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            color: #000 !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
         .block-container {
             padding: 2.5rem 3rem 3rem;
             border-radius: 1.5rem;
-            background-color: rgba(255, 255, 255, 0.97) !important;
+            background-color: rgba(255, 255, 255, 0.95);
             box-shadow: 0 32px 64px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
         }
         div[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #2d1b69 0%, #11998e 100%);
@@ -106,6 +104,7 @@ def main():
             font-size: 2.5rem;
             font-weight: 800;
             margin-bottom: 0.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         .hero-subtitle {
             font-size: 1.2rem;
@@ -118,6 +117,7 @@ def main():
             margin-top: 2rem;
             margin-bottom: 1rem;
             color: #2d1b69;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
         .metric-card {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -131,12 +131,46 @@ def main():
         .metric-card:hover {
             transform: translateY(-5px);
         }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            font-weight: 600;
+        }
+        .chart-container {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 1rem;
+            padding: 1rem;
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1);
+        }
+        .dataframe-container {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 1rem;
+            padding: 1rem;
+            box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1);
+        }
+        button[data-testid="stDownloadButton"] {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            box-shadow: 0 8px 16px rgba(79, 172, 254, 0.3);
+            transition: all 0.3s ease;
+        }
+        button[data-testid="stDownloadButton"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(79, 172, 254, 0.4);
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
-    # session setup
     if "generator" not in st.session_state:
         st.session_state.generator = None
     if "sequence" not in st.session_state:
@@ -147,15 +181,15 @@ def main():
         st.session_state.params_snapshot = None
     if "seed_snapshot" not in st.session_state:
         st.session_state.seed_snapshot = None
-
-    # sidebar controls
     with st.sidebar:
         st.markdown("<div class='sidebar-title'>Generator Controls</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sidebar-subtitle'>Adjust parameters to craft your sequence.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sidebar-subtitle'>Adjust the recurrence parameters to craft your sequence.</div>", unsafe_allow_html=True)
         modulus = int(st.number_input("Modulus", value=2 ** 31, min_value=1, step=1, format="%d"))
         multiplier = int(st.number_input("Multiplier", value=1103515245, step=1, format="%d"))
         increment = int(st.number_input("Increment", value=12345, step=1, format="%d"))
         seed = int(st.number_input("Seed", value=42, step=1, format="%d"))
+        lower_bound = st.number_input("Lower Bound", value=0, min_value=0, step=1, format="%d")
+        upper_bound = st.number_input("Upper Bound", value=100, min_value=1, step=1, format="%d")
         count = int(st.slider("Sequence Length", min_value=1, max_value=500, value=50, step=1))
         st.markdown("---")
         config_col, generate_col = st.columns(2)
@@ -163,17 +197,20 @@ def main():
         generate_clicked = generate_col.button("Generate", use_container_width=True)
         next_clicked = st.button("Next Value", use_container_width=True)
         clear_clicked = st.button("Reset Output", use_container_width=True)
-
     def snapshots_match():
         return (
-            st.session_state.params_snapshot == (modulus, multiplier, increment)
+            st.session_state.params_snapshot == (modulus, multiplier, increment, lower_bound, upper_bound)
             and st.session_state.seed_snapshot == seed
         )
 
     def refresh_generator():
+        if lower_bound >= upper_bound:
+            st.error("Lower bound must be less than upper bound.")
+            st.session_state.generator = None
+            return None
         generator = LinearCongruentialGenerator(modulus, multiplier, increment, seed)
         st.session_state.generator = generator
-        st.session_state.params_snapshot = (modulus, multiplier, increment)
+        st.session_state.params_snapshot = (modulus, multiplier, increment, lower_bound, upper_bound)
         st.session_state.seed_snapshot = seed
         return generator
 
@@ -183,12 +220,11 @@ def main():
         st.session_state.sequence = []
         for index in range(length):
             integer = generator.next_int()
-            normalized = integer / generator.modulus
-            st.session_state.sequence.append({"Index": index + 1, "Integer": integer, "Normalized": normalized})
+            bounded = lower_bound + round((upper_bound - lower_bound) * (integer / (generator.modulus - 1)))
+            st.session_state.sequence.append({"Index": index + 1, "Value": bounded})
         st.session_state.status = f"Generated {length} values"
         return generator
 
-    # main logic
     if st.session_state.generator is None:
         refresh_generator()
 
@@ -214,8 +250,8 @@ def main():
         if not st.session_state.sequence:
             generator.reseed(seed)
         integer = generator.next_int()
-        normalized = integer / generator.modulus
-        st.session_state.sequence.append({"Index": len(st.session_state.sequence) + 1, "Integer": integer, "Normalized": normalized})
+        bounded = lower_bound + round((upper_bound - lower_bound) * (integer / (generator.modulus - 1)))
+        st.session_state.sequence.append({"Index": len(st.session_state.sequence) + 1, "Value": bounded})
         st.session_state.status = "Generated next value"
         st.sidebar.info("Appended one value")
 
@@ -227,34 +263,59 @@ def main():
         st.session_state.sequence = []
         st.session_state.status = "Output cleared"
         st.sidebar.warning("Outputs cleared")
-
     st.sidebar.markdown(f"<div class='status-chip'>{st.session_state.status}</div>", unsafe_allow_html=True)
-
-    # main UI
     st.markdown(
         """
         <div class='hero'>
             <div class='hero-title'>Linear Congruential Playground</div>
-            <div class='hero-subtitle'>Visualize pseudo-random sequences and adjust parameters in real time.</div>
+            <div class='hero-subtitle'>Visualize pseudo-random sequences, inspect their structure, and iterate on parameters in real time.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
     raw_values = st.session_state.sequence
-    if raw_values:
-        df = pd.DataFrame(raw_values)
-        stats = df["Normalized"]
-        std = stats.std(ddof=0) if not pd.isna(stats.std(ddof=0)) else 0
+    try:
+        values = [entry for entry in raw_values if isinstance(entry, dict)]
+    except TypeError:
+        values = []
+    if values:
+        df = pd.DataFrame(values)
+        stats = df["Value"]
+        std = stats.std(ddof=0)
+        if pd.isna(std):
+            std = 0.0
         spread = stats.max() - stats.min()
-
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Count", len(df))
-        col2.metric("Mean", f"{stats.mean():.5f}")
-        col3.metric("Std Dev", f"{std:.5f}")
-        col4.metric("Span", f"{spread:.5f}")
-
-        st.markdown("### Sequence Visualization")
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(df)}</div>
+                <div class="metric-label">Count</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{stats.mean():.5f}</div>
+                <div class="metric-label">Mean</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{std:.5f}</div>
+                <div class="metric-label">Std Dev</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{spread:.5f}</div>
+                <div class="metric-label">Span</div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Sequence Visualization</div>", unsafe_allow_html=True)
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         chart = alt.Chart(df).mark_area(
             line={"color": "#667eea", "strokeWidth": 3},
             color=alt.Gradient(
@@ -263,21 +324,29 @@ def main():
                     alt.GradientStop(color="#f093fb", offset=0),
                     alt.GradientStop(color="#f5576c", offset=1)
                 ],
-                x1=1, x2=1, y1=1, y2=0
+                x1=1,
+                x2=1,
+                y1=1,
+                y2=0
             ),
             opacity=0.85,
         ).encode(
             x=alt.X("Index:Q", title="Step"),
-            y=alt.Y("Normalized:Q", title="Normalized Value", scale=alt.Scale(domain=[0, 1])),
-            tooltip=["Index", "Integer", alt.Tooltip("Normalized", format=".6f")]
+            y=alt.Y("Value:Q", title="Bounded Value", scale=alt.Scale(domain=[lower_bound, upper_bound])),
+            tooltip=["Index:Q", "Value:Q"],
         ).properties(height=340)
         st.altair_chart(chart.interactive(), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>Sequence Details</div>", unsafe_allow_html=True)
+        st.markdown('<div class="dataframe-container">', unsafe_allow_html=True)
+        df_display = df.copy()
+        df_display["Value"] = df_display["Value"].astype(str)
+        st.dataframe(df_display, use_container_width=True)
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download CSV", data=csv_data, file_name="lcg_sequence.csv", mime="text/csv")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown("### Sequence Details")
-        df["Normalized"] = df["Normalized"].map(lambda x: f"{x:.10f}")
-        st.dataframe(df, use_container_width=True)
-        st.download_button("Download CSV", df.to_csv(index=False), "lcg_sequence.csv", "text/csv")
 
 
-if __name__ == "__main__":  # fixed main entry
+if __name__ == "__main__":
     main()
